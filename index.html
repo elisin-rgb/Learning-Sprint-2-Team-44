@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buffer Overflow Visualizer</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #17202a;
+      --muted: #5f6b76;
+      --border: #d8dee4;
+      --accent: #2563eb;
+      --danger: #dc2626;
+      --safe: #15803d;
+      --memory: #eaf2ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    header {
+      background: #17202a;
+      color: white;
+      padding: 28px 20px;
+      text-align: center;
+    }
+
+    header h1 { margin: 0 0 8px; }
+    header p { margin: 0; color: #d9e2ec; }
+
+    main {
+      width: min(1050px, 94%);
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    label { font-weight: bold; display: block; margin-bottom: 6px; }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 11px;
+      border: 1px solid #aeb8c2;
+      border-radius: 7px;
+      font-size: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 7px;
+      padding: 11px 16px;
+      background: var(--accent);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.secondary { background: #64748b; }
+    button:hover { filter: brightness(.94); }
+
+    .status {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #eef2f7;
+    }
+
+    .status.safe { border-left: 5px solid var(--safe); }
+    .status.warning { border-left: 5px solid var(--danger); }
+
+    .memory {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 8px 12px;
+      align-items: stretch;
+      margin-top: 15px;
+    }
+
+    .label-cell, .byte {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+    }
+
+    .label-cell {
+      font-weight: bold;
+      background: #f8fafc;
+    }
+
+    .byte {
+      justify-content: space-between;
+      background: var(--memory);
+      font-family: Consolas, monospace;
+      transition: .25s ease;
+    }
+
+    .byte.overwritten {
+      background: #fee2e2;
+      border-color: #ef4444;
+    }
+
+    .byte .value {
+      overflow-wrap: anywhere;
+    }
+
+    .legend {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      border-radius: 3px;
+      vertical-align: -2px;
+      margin-right: 5px;
+      border: 1px solid var(--border);
+    }
+
+    .blue { background: var(--memory); }
+    .red { background: #fee2e2; border-color: #ef4444; }
+
+    .step-area {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 15px;
+    }
+
+    input[type="range"] { width: 260px; }
+
+    .explanation {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .explanation div {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fafbfc;
+    }
+
+    .explanation h3 { margin-top: 0; }
+
+    code {
+      background: #eef2f7;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 750px) {
+      .controls { grid-template-columns: 1fr; }
+      .explanation { grid-template-columns: 1fr; }
+      .memory { grid-template-columns: 105px 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Buffer Overflow Visualizer</h1>
+    <p>A safe, interactive demonstration of how excessive input can overwrite nearby stack data.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Try the visualization</h2>
+      <p>
+        Enter text below. The simulated function has an <strong>8-byte buffer</strong>.
+        Input beyond those 8 bytes is shown entering the neighboring memory cells.
+      </p>
+
+      <div class="controls">
+        <div>
+          <label for="inputText">Input</label>
+          <input id="inputText" type="text" value="HELLO" maxlength="32"
+                 aria-label="Text to place into the simulated buffer">
+        </div>
+        <button id="fillBtn">Fill Memory</button>
+        <button id="clearBtn" class="secondary">Reset</button>
+      </div>
+
+      <div id="status" class="status safe" role="status"></div>
+
+      <div class="step-area">
+        <label for="stepSlider">Show bytes:</label>
+        <input id="stepSlider" type="range" min="0" max="32" value="32">
+        <span id="stepValue">32</span>
+      </div>
+
+      <div class="memory" id="memory"></div>
+
+      <div class="legend">
+        <span><span class="dot blue"></span>normal simulated memory</span>
+        <span><span class="dot red"></span>overwritten neighboring data</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>What is happening?</h2>
+      <div class="explanation">
+        <div>
+          <h3>1. Buffer</h3>
+          <p>
+            A buffer is a fixed-size region of memory. Here it is modeled as eight
+            byte-sized cells.
+          </p>
+        </div>
+        <div>
+          <h3>2. Adjacent stack data</h3>
+          <p>
+            Real stack layouts depend on the compiler and platform. For teaching,
+            this model places a saved frame pointer and return-address area after
+            the buffer.
+          </p>
+        </div>
+        <div>
+          <h3>3. Overflow</h3>
+          <p>
+            If a program fails to check the input length, extra bytes can overwrite
+            data that was not intended to be part of the input buffer.
+          </p>
+        </div>
+      </div>
+      <p class="note">
+        This visualization intentionally does not generate shellcode, calculate real
+        exploit offsets, or modify actual process memory. It is only a conceptual model.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Key takeaway</h2>
+      <p>
+        Memory safety requires a program to respect the size of the destination buffer.
+        In languages or APIs that do not automatically enforce bounds, a programmer
+        must validate input and use safe memory operations. Modern systems also use
+        defenses such as stack canaries, ASLR, and non-executable memory, but these
+        defenses do not make unsafe buffer handling a good practice.
+      </p>
+    </section>
+  </main>
+
+  <script>
+    const memory = document.getElementById("memory");
+    const inputText = document.getElementById("inputText");
+    const status = document.getElementById("status");
+    const slider = document.getElementById("stepSlider");
+    const stepValue = document.getElementById("stepValue");
+
+    const cells = [
+      { label: "Buffer", size: 8, kind: "buffer" },
+      { label: "Saved frame pointer", size: 8, kind: "frame" },
+      { label: "Return address", size: 8, kind: "return" },
+      { label: "Other stack data", size: 8, kind: "other" }
+    ];
+
+    function visibleBytes() {
+      return Number(slider.value);
+    }
+
+    function render() {
+      const text = inputText.value;
+      const shown = Math.min(visibleBytes(), text.length);
+      memory.innerHTML = "";
+
+      let offset = 0;
+      cells.forEach(section => {
+        const label = document.createElement("div");
+        label.className = "label-cell";
+        label.textContent = `${section.label} (${section.size} bytes)`;
+        memory.appendChild(label);
+
+        const row = document.createElement("div");
+        row.className = "byte";
+
+        const sectionBytes = [];
+        for (let i = 0; i < section.size; i++) {
+          const index = offset + i;
+          const char = index < shown ? text[index] : "·";
+          sectionBytes.push(char);
+        }
+
+        row.innerHTML = `<span class="value">${sectionBytes.join(" ")}</span>`;
+        if (offset < shown && offset + section.size > 8) {
+          row.classList.add("overwritten");
+        }
+
+        memory.appendChild(row);
+        offset += section.size;
+      });
+
+      stepValue.textContent = shown;
+
+      if (text.length <= 8) {
+        status.className = "status safe";
+        status.innerHTML =
+          `<strong>Within bounds:</strong> ${text.length} byte(s) of input fit inside the 8-byte buffer.`;
+      } else {
+        const overflow = text.length - 8;
+        status.className = "status warning";
+        status.innerHTML =
+          `<strong>Overflow shown:</strong> ${overflow} byte(s) extend past the 8-byte buffer ` +
+          `and enter neighboring simulated stack memory.`;
+      }
+    }
+
+    document.getElementById("fillBtn").addEventListener("click", () => {
+      slider.value = Math.min(32, Math.max(1, inputText.value.length));
+      render();
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      inputText.value = "";
+      slider.value = 0;
+      render();
+    });
+
+    inputText.addEventListener("input", render);
+    slider.addEventListener("input", render);
+    render();
+  </script>
+</body>
+</html>
