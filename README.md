@@ -42,8 +42,7 @@ This is **not an exploit tool**. It does not access real process memory, generat
 No build system is required.
 
 ### Option 1: Deploy from GitHub
-Under deployments click github-pages
-Under github-pages click https://elisin-rgb.github.io/Learning-Sprint-2-Team-44/ to launch the website
+Click https://elisin-rgb.github.io/Learning-Sprint-2-Team-44/ to launch the website
 
 ### Option 2: Open locally
 
